@@ -3,100 +3,63 @@ import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { openai } from '../../config/openai';
 import { getUserLanguages } from '../../utils/getUserLanguages';
-import { WordList } from '../lists/model';
+import { query } from '../../config/postgresql';
 
 const router = Router();
 
-// Rate limiting for voice session creation
 const voiceSessionLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 voice sessions per windowMs
-  message: {
-    error: 'Too many voice session requests. Please try again later.',
-  },
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many voice session requests. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-/**
- * POST /api/voice/session
- * Generate ephemeral token for voice agent
- */
 router.post('/session',
   voiceSessionLimit,
-  [
-    body('listId')
-      .isString()
-      .isLength({ min: 1 })
-      .withMessage('List ID is required'),
-  ],
+  [body('listId').isString().isLength({ min: 1 })],
   async (req: Request, res: Response) => {
     try {
-      // Check validation errors
       const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          error: 'Validation failed',
-          details: errors.array(),
-        });
-      }
+      if (!errors.isEmpty()) return res.status(400).json({ error: 'Validation failed', details: errors.array() });
 
       const { listId } = req.body;
-      const userId = req.headers['user-id'] as string;
+      const tenantId = (req as any).tenantId;
 
-      if (!userId) {
-        return res.status(401).json({
-          error: 'User ID is required',
-        });
-      }
+      // 1. Get tenant's language preferences
+      const userLanguages = await getUserLanguages(tenantId);
 
-      // Get user's language preferences
-      const userLanguages = await getUserLanguages(userId);
+      // 2. Get the word list to provide context (PostgreSQL)
+      const listResult = await query('SELECT * FROM word_lists WHERE id = $1 AND tenant_id = $2', [listId, tenantId]);
+      if (listResult.rows.length === 0) return res.status(404).json({ error: 'Word list not found' });
+      const wordList = listResult.rows[0];
 
-      // Get the word list to provide context
-      const wordList = await WordList.findById(listId);
-      if (!wordList) {
-        return res.status(404).json({
-          error: 'Word list not found',
-        });
-      }
-
-      // Generate ephemeral token
-      const sessionResponse = await openai.beta.realtime.sessions.create({
+      // 3. Generate ephemeral token via OpenAI
+      const sessionResponse = await (openai as any).beta.realtime.sessions.create({
         model: 'gpt-4o-realtime-preview-2024-12-17',
-        voice: 'alloy', // Default voice for now
+        voice: 'alloy',
       });
 
       res.json({
         success: true,
         data: {
           clientSecret: sessionResponse.client_secret.value,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes from now
-          sessionId: sessionResponse.client_secret.value, // Use client secret as session identifier
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          sessionId: sessionResponse.client_secret.value,
           listContext: {
-            listId: wordList._id.toString(),
+            listId: wordList.id,
             listName: wordList.name,
             description: wordList.description,
             context: wordList.context,
           },
-          userLanguages: {
-            baseLanguage: userLanguages.baseLanguage,
-            targetLanguage: userLanguages.targetLanguage,
-          }
+          userLanguages
         },
       });
     } catch (error) {
       console.error('Voice session creation error:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      
-      res.status(500).json({
-        error: 'Failed to create voice session',
-        message: errorMessage,
-      });
+      res.status(500).json({ error: 'Failed to create voice session' });
     }
   }
 );
-
 
 export default router;
