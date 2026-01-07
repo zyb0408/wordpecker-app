@@ -1,9 +1,19 @@
-import { Box, Container, Flex, Button, Icon, Text } from '@chakra-ui/react';
-import { Link } from 'react-router-dom';
+import { Box, Container, Flex, Button, Icon, Text, Menu, MenuButton, MenuList, MenuItem, Avatar } from '@chakra-ui/react';
+import { Link, useNavigate } from 'react-router-dom';
 import { GiTreeBranch, GiBookshelf } from 'react-icons/gi';
-import { FaFeatherAlt, FaCog, FaCamera, FaGraduationCap } from 'react-icons/fa';
+import { FaFeatherAlt, FaCog, FaCamera, FaGraduationCap, FaSignOutAlt } from 'react-icons/fa';
+import { ChevronDownIcon } from '@chakra-ui/icons';
 
 export const Header = () => {
+  const navigate = useNavigate();
+  const tenantId = localStorage.getItem('wordpecker-tenant-id');
+
+  const handleLogout = () => {
+    localStorage.removeItem('wordpecker-tenant-id');
+    localStorage.removeItem('wordpecker-auth-token');
+    navigate('/login');
+  };
+
   return (
     <Box as="nav" w="100%" bg="slate.800" boxShadow="lg" position="sticky" top={0} zIndex={10}>
       <Container maxW="container.xl">
@@ -85,13 +95,37 @@ export const Header = () => {
               </Button>
             </Link>
           </Flex>
-          <Box>
-            <Text color="green.500" fontWeight="bold">
-              WordPecker App
-            </Text>
-          </Box>
+          
+          <Flex align="center" gap={4}>
+            <Menu>
+              <MenuButton 
+                as={Button} 
+                variant="ghost" 
+                rightIcon={<ChevronDownIcon />}
+                _hover={{ bg: 'slate.700' }}
+              >
+                <Flex align="center" gap={2}>
+                  <Avatar size="xs" name={tenantId || 'User'} bg="purple.500" />
+                  <Text fontSize="sm" color="gray.300" maxW="100px" isTruncated>
+                    {tenantId || 'User'}
+                  </Text>
+                </Flex>
+              </MenuButton>
+              <MenuList bg="slate.800" borderColor="slate.700">
+                <MenuItem 
+                  icon={<FaSignOutAlt />} 
+                  onClick={handleLogout}
+                  _hover={{ bg: 'red.900', color: 'white' }}
+                  bg="transparent"
+                  color="red.400"
+                >
+                  Logout
+                </MenuItem>
+              </MenuList>
+            </Menu>
+          </Flex>
         </Flex>
       </Container>
     </Box>
   );
-}; 
+};

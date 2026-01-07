@@ -2,24 +2,42 @@ import axios from 'axios';
 import { WordList, Word, Exercise, Question, Template, WordDetail, SentenceExample, UserPreferences, ExerciseTypePreferences, ImageDescriptionAnalysis, DescriptionExercise, VocabularyWordsResponse, WordDetailsResponse } from '../types';
 
 // Retrieve tenant ID or JWT from storage
-const getTenantId = () => localStorage.getItem('wordpecker-tenant-id') || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+const getTenantId = () => localStorage.getItem('wordpecker-tenant-id');
 const getAuthToken = () => localStorage.getItem('wordpecker-auth-token');
 
+// Dynamically determine API URL
+// If running in Manus proxy environment, use the proxy URL for port 3000
+const getBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  
+  const currentHost = window.location.hostname;
+  if (currentHost.includes('manus.computer')) {
+    // Replace 5173 with 3000 in the proxy domain
+    return `https://${currentHost.replace('5173', '3000')}`;
+  }
+  
+  return 'http://localhost:3000';
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+console.log('API Base URL:', getBaseUrl());
+
 // Add request interceptor to include multi-tenancy headers
 api.interceptors.request.use(
   (config) => {
     const token = getAuthToken();
+    const tenantId = getTenantId();
+    
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      config.headers['x-tenant-id'] = getTenantId();
+    } else if (tenantId) {
+      config.headers['x-tenant-id'] = tenantId;
     }
     return config;
   },
@@ -33,6 +51,12 @@ api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     console.error('API Error:', error);
+    // If 401 Unauthorized, redirect to login
+    if (error.response?.status === 401) {
+      localStorage.removeItem('wordpecker-tenant-id');
+      localStorage.removeItem('wordpecker-auth-token');
+      window.location.href = '/login';
+    }
     return Promise.reject(error);
   }
 );
@@ -265,4 +289,4 @@ export const apiService = {
       };
     };
   }> => api.post('/api/voice/session', { listId })
-}; 
+};

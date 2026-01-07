@@ -25,27 +25,17 @@ const app = express();
 
 // Global middleware
 app.use(helmet({
-  crossOriginResourcePolicy: false, // Allow cross-origin images/audio
+  crossOriginResourcePolicy: false,
 }));
 
-// Configure CORS for production
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  /\.vercel\.app$/, // Allow all Vercel deployments
-];
-
+// Robust CORS configuration
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.some(allowed => 
-      typeof allowed === 'string' ? allowed === origin : allowed.test(origin)
-    )) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // Reflect request origin (safe for development/proxy)
   credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'Accept'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 
 app.use(express.json());
