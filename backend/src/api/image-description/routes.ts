@@ -1,8 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { validate } from 'echt';
-import { DescriptionExercise } from './model';
-import { WordList } from '../lists/model';
-import { Word } from '../words/model';
+import { query } from '../../config/postgresql';
 import { imageDescriptionAgentService } from './agent-service';
 import { stockPhotoService } from './stock-photo-service';
 import { getUserLanguages } from '../../utils/getUserLanguages';
@@ -15,21 +13,15 @@ import {
 
 const router = Router();
 
-const getUserId = <T extends { headers: Record<string, any> }>(req: T) => {
-  const userId = req.headers['user-id'] as string;
-  if (!userId) throw new Error('User ID is required');
-  return userId;
-};
-
-router.post('/start', validate(startExerciseSchema), async (req, res) => {
+router.post('/start', validate(startExerciseSchema), async (req: Request, res: Response) => {
   try {
     const { context, imageSource } = req.body;
-    const userId = getUserId(req);
+    const tenantId = (req as any).tenantId;
 
     const exerciseContext = context || await imageDescriptionAgentService.generateContext();
     const image = imageSource === 'ai' 
-      ? await imageDescriptionAgentService.generateAIImage(exerciseContext, userId)
-      : await stockPhotoService.findStockImage(exerciseContext, userId);
+      ? await imageDescriptionAgentService.generateAIImage(exerciseContext, tenantId)
+      : await stockPhotoService.findStockImage(exerciseContext, tenantId);
 
     res.json({
       context: exerciseContext,
@@ -42,14 +34,12 @@ router.post('/start', validate(startExerciseSchema), async (req, res) => {
   }
 });
 
-router.post('/submit', validate(submitDescriptionSchema), async (req, res) => {
+router.post('/submit', validate(submitDescriptionSchema), async (req: Request, res: Response) => {
   try {
     const { context, imageUrl, imageAlt, userDescription } = req.body;
-    const userId = getUserId(req);
+    const tenantId = (req as any).tenantId;
 
-    const { baseLanguage, targetLanguage } = await getUserLanguages(userId);
-
-    console.log("Calling analyzeDescription"); 
+    const { baseLanguage, targetLanguage } = await getUserLanguages(tenantId);
 
     const analysis = await imageDescriptionAgentService.analyzeDescription(
       userDescription, 
@@ -59,20 +49,14 @@ router.post('/submit', validate(submitDescriptionSchema), async (req, res) => {
       targetLanguage
     );
 
-    console.log('analysis', analysis);
-
-    const exercise = await DescriptionExercise.create({
-      userId,
-      context: context || 'General image description',
-      imageUrl,
-      imageAlt: imageAlt || '',
-      userDescription: userDescription.trim(),
-      analysis,
-      recommendedWords: analysis.recommendations
-    });
+    const result = await query(
+      `INSERT INTO image_description_exercises (tenant_id, context, image_url, image_alt, user_description, analysis, recommended_words)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [tenantId, context || 'General image description', imageUrl, imageAlt || '', userDescription.trim(), analysis, analysis.recommendations]
+    );
 
     res.json({
-      exerciseId: exercise._id,
+      exerciseId: result.rows[0].id,
       analysis,
       message: 'Great job! Here\'s your personalized feedback and vocabulary recommendations.'
     });
@@ -82,54 +66,65 @@ router.post('/submit', validate(submitDescriptionSchema), async (req, res) => {
   }
 });
 
-router.post('/add-words', validate(addWordsSchema), async (req, res) => {
+router.post('/add-words', validate(addWordsSchema), async (req: Request, res: Response) => {
   try {
     const { exerciseId, listId, selectedWords, createNewList } = req.body;
-    const userId = getUserId(req);
+    const tenantId = (req as any).tenantId;
 
-    const exercise = await DescriptionExercise.findOne({ _id: exerciseId, userId });
-    if (!exercise) return res.status(404).json({ error: 'Exercise not found' });
+    const exerciseResult = await query('SELECT * FROM image_description_exercises WHERE id = $1 AND tenant_id = $2', [exerciseId, tenantId]);
+    if (exerciseResult.rows.length === 0) return res.status(404).json({ error: 'Exercise not found' });
+    const exercise = exerciseResult.rows[0];
 
-    let targetList;
+    let targetListId;
+    let targetListName;
+
     if (createNewList) {
       const contextName = exercise.context.length > 50 ? exercise.context.substring(0, 47) + '...' : exercise.context;
-      targetList = await WordList.create({
-        name: `📸 ${contextName}`,
-        description: `Vocabulary discovered through image description: ${exercise.context}`,
-        context: exercise.context
-      });
+      const newList = await query(
+        'INSERT INTO word_lists (tenant_id, name, description, context) VALUES ($1, $2, $3, $4) RETURNING id, name',
+        [tenantId, `📸 ${contextName}`, `Vocabulary discovered through image description: ${exercise.context}`, exercise.context]
+      );
+      targetListId = newList.rows[0].id;
+      targetListName = newList.rows[0].name;
     } else {
-      targetList = await WordList.findById(listId);
-      if (!targetList) return res.status(404).json({ error: 'Word list not found' });
+      const listResult = await query('SELECT id, name FROM word_lists WHERE id = $1 AND tenant_id = $2', [listId, tenantId]);
+      if (listResult.rows.length === 0) return res.status(404).json({ error: 'Word list not found' });
+      targetListId = listResult.rows[0].id;
+      targetListName = listResult.rows[0].name;
     }
 
     const addedWords = [];
     for (const { word, meaning } of selectedWords) {
-      const existingWord = await Word.findOne({ value: word, 'ownedByLists.listId': targetList._id });
+      const val = word.toLowerCase().trim();
       
-      if (!existingWord) {
-        let wordDoc = await Word.findOne({ value: word });
-        
-        if (wordDoc) {
-          wordDoc.ownedByLists.push({ listId: targetList._id, meaning, learnedPoint: 0 });
-          await wordDoc.save();
-        } else {
-          await Word.create({
-            value: word,
-            ownedByLists: [{ listId: targetList._id, meaning, learnedPoint: 0 }]
-          });
-        }
+      // Find or create word for this tenant
+      let wordResult = await query('SELECT id FROM words WHERE value = $1 AND tenant_id = $2', [val, tenantId]);
+      let wordId;
+      if (wordResult.rows.length === 0) {
+        const newWord = await query('INSERT INTO words (tenant_id, value) VALUES ($1, $2) RETURNING id', [tenantId, val]);
+        wordId = newWord.rows[0].id;
+      } else {
+        wordId = wordResult.rows[0].id;
+      }
+
+      // Create context
+      const contextCheck = await query('SELECT id FROM word_contexts WHERE word_id = $1 AND list_id = $2', [wordId, targetListId]);
+      if (contextCheck.rows.length === 0) {
+        await query(
+          'INSERT INTO word_contexts (word_id, list_id, meaning, learned_point) VALUES ($1, $2, $3, $4)',
+          [wordId, targetListId, meaning, 0]
+        );
         addedWords.push({ word, meaning });
       }
     }
 
     res.json({
       message: createNewList 
-        ? `Created new list "${targetList.name}" and added ${addedWords.length} words`
+        ? `Created new list "${targetListName}" and added ${addedWords.length} words`
         : `Successfully added ${addedWords.length} words to your list`,
       addedWords,
-      listId: targetList._id.toString(),
-      listName: targetList.name,
+      listId: targetListId,
+      listName: targetListName,
       createdNewList: !!createNewList
     });
   } catch (error) {
@@ -138,22 +133,24 @@ router.post('/add-words', validate(addWordsSchema), async (req, res) => {
   }
 });
 
-router.get('/history', validate(historyQuerySchema), async (req, res) => {
+router.get('/history', validate(historyQuerySchema), async (req: Request, res: Response) => {
   try {
-    const userId = getUserId(req);
-    const { limit } = req.query;
+    const tenantId = (req as any).tenantId;
+    const { limit = 10 } = req.query;
 
-    const exercises = await DescriptionExercise
-      .find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .select('context imageUrl imageAlt userDescription analysis.feedback createdAt')
-      .lean();
+    const result = await query(
+      `SELECT id, context, image_url as "imageUrl", image_alt as "imageAlt", user_description as "userDescription", 
+              analysis->'feedback' as feedback, created_at as "createdAt"
+       FROM image_description_exercises
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [tenantId, limit]
+    );
 
-    res.json({ exercises });
+    res.json({ exercises: result.rows });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch exercise history';
-    res.status(400).json({ error: message });
+    res.status(400).json({ error: 'Failed to fetch exercise history' });
   }
 });
 

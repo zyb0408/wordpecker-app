@@ -128,3 +128,18 @@ CREATE TABLE IF NOT EXISTS tenant_preferences (
 INSERT INTO tenant_preferences (tenant_id) VALUES 
 ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'),
 ('b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a22');
+
+-- 10. Create Image Description Exercises Table
+CREATE TABLE IF NOT EXISTS image_description_exercises (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    context TEXT NOT NULL,
+    image_url TEXT NOT NULL,
+    image_alt TEXT,
+    user_description TEXT NOT NULL,
+    analysis JSONB NOT NULL,
+    recommended_words JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_image_exercises_tenant ON image_description_exercises(tenant_id);
