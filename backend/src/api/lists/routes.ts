@@ -1,85 +1,103 @@
 import { Router, Request, Response } from 'express';
 import { validate } from 'echt';
-import { WordList, IWordList } from './model';
-import { Word } from '../words/model';
+import { query } from '../../config/postgresql';
 import { createListSchema, listParamsSchema, updateListSchema } from './schemas';
 
 const router = Router();
 
-const transform = (list: IWordList) => ({
-  id: list._id.toString(),
-  name: list.name,
-  description: list.description,
-  context: list.context,
-  created_at: list.created_at.toISOString(),
-  updated_at: list.updated_at.toISOString()
-});
-
-router.post('/', validate(createListSchema), async (req, res) => {
+router.post('/', validate(createListSchema), async (req: Request, res: Response) => {
   try {
-    const list = await WordList.create(req.body);
-    res.status(201).json(transform(list));
+    const { name, description, context } = req.body;
+    const tenantId = (req as any).tenantId;
+    
+    const result = await query(
+      'INSERT INTO word_lists (tenant_id, name, description, context) VALUES ($1, $2, $3, $4) RETURNING *',
+      [tenantId, name, description, context]
+    );
+    
+    res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Error creating list' });
   }
 });
 
-router.get('/', async (req, res) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const lists = await WordList.find().sort({ created_at: -1 }).lean();
-    const data = await Promise.all(lists.map(async (list) => {
-      const words = await Word.find({ 'ownedByLists.listId': list._id }).lean();
-      const contexts = words.map(w => w.ownedByLists.find(c => c.listId.toString() === list._id.toString()));
-      const progress = contexts.map(c => c?.learnedPoint || 0);
-      
-      return {
-        ...transform(list),
-        wordCount: words.length,
-        averageProgress: words.length ? Math.round(progress.reduce((a, b) => a + b, 0) / words.length) : 0,
-        masteredWords: progress.filter(p => p >= 80).length
-      };
-    }));
-    res.json(data);
+    const tenantId = (req as any).tenantId;
+    const result = await query(
+      `SELECT wl.*, 
+              COUNT(wc.id) as "wordCount",
+              COALESCE(AVG(wc.learned_point), 0) as "averageProgress",
+              COUNT(CASE WHEN wc.learned_point >= 80 THEN 1 END) as "masteredWords"
+       FROM word_lists wl
+       LEFT JOIN word_contexts wc ON wl.id = wc.list_id
+       WHERE wl.tenant_id = $1
+       GROUP BY wl.id
+       ORDER BY wl.created_at DESC`,
+      [tenantId]
+    );
+    
+    res.json(result.rows.map(row => ({
+      ...row,
+      averageProgress: Math.round(Number(row.averageProgress)),
+      wordCount: Number(row.wordCount),
+      masteredWords: Number(row.masteredWords)
+    })));
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Error fetching lists' });
   }
 });
 
-router.get('/:id', validate(listParamsSchema), async (req, res) => {
+router.get('/:id', validate(listParamsSchema), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const list = await WordList.findById(id).lean();
-    if (!list) return res.status(404).json({ message: 'List not found' });
+    const tenantId = (req as any).tenantId;
     
-    res.json(transform(list));
+    const result = await query(
+      'SELECT * FROM word_lists WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+    
+    if (result.rows.length === 0) return res.status(404).json({ message: 'List not found' });
+    
+    res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching list' });
   }
 });
 
-router.put('/:id', validate(updateListSchema), async (req, res) => {
+router.put('/:id', validate(updateListSchema), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const list = await WordList.findByIdAndUpdate(id, req.body, { new: true, lean: true });
-    if (!list) return res.status(404).json({ message: 'List not found' });
+    const { name, description, context } = req.body;
+    const tenantId = (req as any).tenantId;
     
-    res.json(transform(list));
+    const result = await query(
+      'UPDATE word_lists SET name = $1, description = $2, context = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND tenant_id = $5 RETURNING *',
+      [name, description, context, id, tenantId]
+    );
+    
+    if (result.rows.length === 0) return res.status(404).json({ message: 'List not found' });
+    
+    res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ message: 'Error updating list' });
   }
 });
 
-router.delete('/:id', validate(listParamsSchema), async (req, res) => {
+router.delete('/:id', validate(listParamsSchema), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const tenantId = (req as any).tenantId;
     
-    await Promise.all([
-      Word.updateMany({ 'ownedByLists.listId': id }, { $pull: { ownedByLists: { listId: id } } }),
-      Word.deleteMany({ ownedByLists: { $size: 0 } })
-    ]);
-
-    const deleted = await WordList.findByIdAndDelete(id);
-    if (!deleted) return res.status(404).json({ message: 'List not found' });
+    const result = await query(
+      'DELETE FROM word_lists WHERE id = $1 AND tenant_id = $2 RETURNING *',
+      [id, tenantId]
+    );
+    
+    if (result.rows.length === 0) return res.status(404).json({ message: 'List not found' });
     
     res.status(204).send();
   } catch (error) {
@@ -87,4 +105,4 @@ router.delete('/:id', validate(listParamsSchema), async (req, res) => {
   }
 });
 
-export default router; 
+export default router;

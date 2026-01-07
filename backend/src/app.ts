@@ -4,7 +4,8 @@ import helmet from 'helmet';
 import { environment } from './config/environment';
 import { errorHandler } from './middleware/errorHandler';
 import { openaiRateLimiter } from './middleware/rateLimiter';
-import { connectDB } from './config/mongodb';
+import { connectDB } from './config/postgresql';
+import { tenantHandler } from './middleware/tenantHandler';
 import { configureOpenAIAgents } from './agents';
 
 // Import routes
@@ -26,6 +27,7 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(tenantHandler); // Multi-tenancy support
 
 // Apply rate limiter only to OpenAI-powered routes
 app.use('/api/learn', openaiRateLimiter);
@@ -33,8 +35,8 @@ app.use('/api/quiz', openaiRateLimiter);
 app.use('/api/describe', openaiRateLimiter);
 app.use('/api/vocabulary', openaiRateLimiter);
 app.use('/api/language-validation', openaiRateLimiter);
-app.use('/api/audio', openaiRateLimiter); // Audio routes use ElevenLabs API
-app.use('/api/voice', openaiRateLimiter); // Voice routes use OpenAI Realtime API
+app.use('/api/audio', openaiRateLimiter);
+app.use('/api/voice', openaiRateLimiter);
 
 // Routes
 app.use('/api/lists', listRoutes);
@@ -59,7 +61,7 @@ if (process.env.NODE_ENV !== 'test') {
   // Configure OpenAI agents
   configureOpenAIAgents();
   
-  // Connect to MongoDB and start server
+  // Connect to PostgreSQL and start server
   connectDB().then(() => {
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT} in ${environment.nodeEnv} mode`);
@@ -67,4 +69,4 @@ if (process.env.NODE_ENV !== 'test') {
   });
 }
 
-export default app; 
+export default app;
