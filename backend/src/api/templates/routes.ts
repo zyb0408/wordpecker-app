@@ -1,50 +1,43 @@
 import { Router, Request, Response } from 'express';
 import { validate } from 'echt';
-import { Template } from './model';
-import { WordList } from '../lists/model';
-import { Word } from '../words/model';
+import { query } from '../../config/postgresql';
 import { templateParamsSchema, cloneTemplateSchema, templatesQuerySchema } from './schemas';
 
 const router = Router();
 
-const transformTemplate = (template: any, includeWords = false) => ({
-  id: template._id.toString(),
-  name: template.name,
-  description: template.description,
-  context: template.context,
-  category: template.category,
-  difficulty: template.difficulty,
-  tags: template.tags,
-  ...(includeWords && { words: template.words }),
-  wordCount: template.words.length,
-  cloneCount: template.cloneCount,
-  featured: template.featured,
-  created_at: template.created_at.toISOString(),
-  updated_at: template.updated_at.toISOString()
-});
-
-router.get('/', validate(templatesQuerySchema), async (req, res) => {
+router.get('/', validate(templatesQuerySchema), async (req: Request, res: Response) => {
   try {
     const { category, difficulty, search, featured } = req.query;
     
-    const filter: Record<string, any> = {};
-    if (category && category !== 'all') filter.category = category;
-    if (difficulty && difficulty !== 'all') filter.difficulty = difficulty;
-    if (featured === 'true') filter.featured = true;
-    if (search) {
-      const term = search as string;
-      filter.$or = [
-        { name: { $regex: term, $options: 'i' } },
-        { description: { $regex: term, $options: 'i' } },
-        { tags: { $in: [new RegExp(term, 'i')] } }
-      ];
+    let sql = `
+      SELECT t.*, 
+             (SELECT COUNT(*) FROM template_words tw WHERE tw.template_id = t.id) as "wordCount",
+             ARRAY(SELECT tag FROM template_tags tt WHERE tt.template_id = t.id) as tags
+      FROM templates t
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (category && category !== 'all') {
+      params.push(category);
+      sql += ` AND t.category = $${params.length}`;
     }
+    if (difficulty && difficulty !== 'all') {
+      params.push(difficulty);
+      sql += ` AND t.difficulty = $${params.length}`;
+    }
+    if (featured === 'true') {
+      sql += ` AND t.featured = true`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      sql += ` AND (t.name ILIKE $${params.length} OR t.description ILIKE $${params.length})`;
+    }
+
+    sql += ` ORDER BY t.featured DESC, t.clone_count DESC, t.created_at DESC`;
     
-    const templates = await Template.find(filter)
-      .sort({ featured: -1, cloneCount: -1, created_at: -1 })
-      .lean();
-    
-    res.json(templates.map(t => transformTemplate(t)));
+    const result = await query(sql, params);
+    res.json(result.rows);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching templates' });
   }
@@ -52,76 +45,83 @@ router.get('/', validate(templatesQuerySchema), async (req, res) => {
 
 router.get('/categories', async (req: Request, res: Response) => {
   try {
-    const categories = await Template.distinct('category');
-    res.json(categories.sort());
+    const result = await query('SELECT DISTINCT category FROM templates ORDER BY category');
+    res.json(result.rows.map(r => r.category));
   } catch (error) {
     res.status(500).json({ message: 'Error fetching categories' });
   }
 });
 
-router.get('/:id', validate(templateParamsSchema), async (req, res) => {
+router.get('/:id', validate(templateParamsSchema), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const template = await Template.findById(id).lean();
-    if (!template) return res.status(404).json({ message: 'Template not found' });
+    const templateResult = await query('SELECT * FROM templates WHERE id = $1', [id]);
+    if (templateResult.rows.length === 0) return res.status(404).json({ message: 'Template not found' });
     
-    res.json(transformTemplate(template, true));
+    const wordsResult = await query('SELECT value, meaning FROM template_words WHERE template_id = $1', [id]);
+    const tagsResult = await query('SELECT tag FROM template_tags WHERE template_id = $1', [id]);
+
+    res.json({
+      ...templateResult.rows[0],
+      words: wordsResult.rows,
+      tags: tagsResult.rows.map(r => r.tag),
+      wordCount: wordsResult.rows.length
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching template' });
   }
 });
 
-router.post('/:id/clone', validate(cloneTemplateSchema), async (req, res) => {
+router.post('/:id/clone', validate(cloneTemplateSchema), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
+    const tenantId = (req as any).tenantId;
     
-    const template = await Template.findById(id);
-    if (!template) return res.status(404).json({ message: 'Template not found' });
-    
-    const savedList = await WordList.create({
-      name: name || `${template.name} (Copy)`,
-      description: template.description,
-      context: template.context
-    });
-    
-    await Promise.all(template.words.map(async templateWord => {
-      const value = templateWord.value.toLowerCase().trim();
-      let word = await Word.findOne({ value });
+    const templateResult = await query('SELECT * FROM templates WHERE id = $1', [id]);
+    if (templateResult.rows.length === 0) return res.status(404).json({ message: 'Template not found' });
+    const template = templateResult.rows[0];
+
+    const wordsResult = await query('SELECT value, meaning FROM template_words WHERE template_id = $1', [id]);
+
+    // 1. Create new list for tenant
+    const newListResult = await query(
+      'INSERT INTO word_lists (tenant_id, name, description, context) VALUES ($1, $2, $3, $4) RETURNING *',
+      [tenantId, name || `${template.name} (Copy)`, template.description, template.context]
+    );
+    const newList = newListResult.rows[0];
+
+    // 2. Clone words
+    for (const tw of wordsResult.rows) {
+      const val = tw.value.toLowerCase().trim();
       
-      if (word) {
-        word.ownedByLists.push({
-          listId: savedList._id,
-          meaning: templateWord.meaning,
-          learnedPoint: 0
-        });
-        await word.save();
+      // Find or create word for this tenant
+      let wordResult = await query('SELECT id FROM words WHERE value = $1 AND tenant_id = $2', [val, tenantId]);
+      let wordId;
+      if (wordResult.rows.length === 0) {
+        const newWord = await query('INSERT INTO words (tenant_id, value) VALUES ($1, $2) RETURNING id', [tenantId, val]);
+        wordId = newWord.rows[0].id;
       } else {
-        await Word.create({
-          value,
-          ownedByLists: [{
-            listId: savedList._id,
-            meaning: templateWord.meaning,
-            learnedPoint: 0
-          }]
-        });
+        wordId = wordResult.rows[0].id;
       }
-    }));
+
+      // Create context
+      await query(
+        'INSERT INTO word_contexts (word_id, list_id, meaning, learned_point) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+        [wordId, newList.id, tw.meaning, 0]
+      );
+    }
     
-    await Template.findByIdAndUpdate(id, { $inc: { cloneCount: 1 } });
+    await query('UPDATE templates SET clone_count = clone_count + 1 WHERE id = $1', [id]);
     
     res.status(201).json({
-      id: savedList._id.toString(),
-      name: savedList.name,
-      description: savedList.description,
-      context: savedList.context,
-      wordCount: template.words.length,
+      ...newList,
+      wordCount: wordsResult.rows.length,
       averageProgress: 0,
-      masteredWords: 0,
-      created_at: savedList.created_at.toISOString(),
-      updated_at: savedList.updated_at.toISOString()
+      masteredWords: 0
     });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Error cloning template' });
   }
 });
