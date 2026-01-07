@@ -1,15 +1,9 @@
 import axios from 'axios';
 import { WordList, Word, Exercise, Question, Template, WordDetail, SentenceExample, UserPreferences, ExerciseTypePreferences, ImageDescriptionAnalysis, DescriptionExercise, VocabularyWordsResponse, WordDetailsResponse } from '../types';
 
-// Generate or retrieve user ID
-const getUserId = () => {
-  let userId = localStorage.getItem('wordpecker-user-id');
-  if (!userId) {
-    userId = 'user_' + Math.random().toString(36).substr(2, 9);
-    localStorage.setItem('wordpecker-user-id', userId);
-  }
-  return userId;
-};
+// Retrieve tenant ID or JWT from storage
+const getTenantId = () => localStorage.getItem('wordpecker-tenant-id') || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+const getAuthToken = () => localStorage.getItem('wordpecker-auth-token');
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
@@ -18,10 +12,15 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor to include user-id header
+// Add request interceptor to include multi-tenancy headers
 api.interceptors.request.use(
   (config) => {
-    config.headers['user-id'] = getUserId();
+    const token = getAuthToken();
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      config.headers['x-tenant-id'] = getTenantId();
+    }
     return config;
   },
   (error) => {
@@ -43,7 +42,9 @@ type ApiResponse<T> = Promise<T>;
 
 // Response types
 interface LearnStartResponse {
+  sessionId: string;
   exercises: Exercise[];
+  list: { id: string; name: string; context: string };
 }
 
 interface LearnExercisesResponse {
@@ -53,11 +54,11 @@ interface LearnExercisesResponse {
 interface QuizStartResponse {
   questions: Question[];
   total_questions: number;
+  list: { id: string; name: string; context: string };
 }
 
 interface QuizQuestionsResponse {
   questions: Question[];
-  completed: boolean;
 }
 
 // API service for WordPecker app
@@ -83,6 +84,8 @@ export const apiService = {
     api.post(`/api/learn/${listId}/start`),
   getExercises: (listId: string): ApiResponse<LearnExercisesResponse> => 
     api.post(`/api/learn/${listId}/more`),
+  completeSession: (sessionId: string): ApiResponse<{message: string}> =>
+    api.post(`/api/learn/sessions/${sessionId}/complete`),
 
   // Quiz
   startQuiz: (listId: string): ApiResponse<QuizStartResponse> => 
