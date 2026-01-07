@@ -1,121 +1,116 @@
 import { Router, Request, Response } from 'express';
 import { validate } from 'echt';
-import { WordList } from '../lists/model';
-import { Word } from '../words/model';
-import { UserPreferences } from '../preferences/model';
+import { query } from '../../config/postgresql';
 import { QuestionType } from '../../types';
 import { quizAgentService } from './agent-service';
-import { shuffleArray } from '../../utils/arrayUtils';
 import { listIdSchema, updatePointsSchema } from './schemas';
 
 const router = Router();
 
-const transformWords = (words: any[], listId: string) => 
-  words.map(word => ({
-    id: word._id.toString(),
-    value: word.value,
-    meaning: word.ownedByLists.find((ctx: any) => ctx.listId.toString() === listId)?.meaning || ''
-  }));
-
-const getQuestionTypes = async (userId: string): Promise<QuestionType[]> => {
-  if (!userId) return ['multiple_choice', 'fill_blank', 'true_false', 'sentence_completion'];
-  
-  const preferences = await UserPreferences.findOne({ userId });
-  return preferences 
-    ? Object.entries(preferences.exerciseTypes)
-        .filter(([_, enabled]) => enabled)
-        .map(([type]) => type as QuestionType)
-    : ['multiple_choice', 'fill_blank', 'true_false', 'sentence_completion'];
+const getQuestionTypes = async (tenantId: string): Promise<QuestionType[]> => {
+  const result = await query('SELECT exercise_types FROM tenant_preferences WHERE tenant_id = $1', [tenantId]);
+  if (result.rows.length > 0 && result.rows[0].exercise_types) {
+    const types = result.rows[0].exercise_types;
+    return Object.entries(types)
+      .filter(([_, enabled]) => enabled)
+      .map(([type]) => type as QuestionType);
+  }
+  return ['multiple_choice', 'fill_blank', 'true_false', 'sentence_completion'];
 };
 
-router.post('/:listId/start', validate(listIdSchema), async (req, res) => {
+router.post('/:listId/start', validate(listIdSchema), async (req: Request, res: Response) => {
   try {
     const { listId } = req.params;
-    const [list, words] = await Promise.all([
-      WordList.findById(listId).lean(),
-      Word.find({ 'ownedByLists.listId': listId }).lean()
-    ]);
+    const tenantId = (req as any).tenantId;
 
-    if (!list) return res.status(404).json({ message: 'List not found' });
-    if (!words.length) return res.status(400).json({ message: 'List has no words' });
+    const listResult = await query('SELECT * FROM word_lists WHERE id = $1 AND tenant_id = $2', [listId, tenantId]);
+    if (listResult.rows.length === 0) return res.status(404).json({ message: 'List not found' });
+    const list = listResult.rows[0];
 
-    const transformed = transformWords(words, listId);
-    const shuffled = transformed.sort(() => Math.random() - 0.5);
-    const questionTypes = await getQuestionTypes(req.headers['user-id'] as string);
-    const questions = await quizAgentService.generateQuestions(shuffled.slice(0, 5), list.context || 'General', questionTypes);
+    const wordsResult = await query(
+      `SELECT w.id, w.value, wc.meaning
+       FROM words w
+       JOIN word_contexts wc ON w.id = wc.word_id
+       WHERE wc.list_id = $1
+       ORDER BY RANDOM()`,
+      [listId]
+    );
+
+    if (wordsResult.rows.length === 0) return res.status(400).json({ message: 'List has no words' });
+
+    const questionTypes = await getQuestionTypes(tenantId);
+    const questions = await quizAgentService.generateQuestions(
+      wordsResult.rows.slice(0, 5), 
+      list.context || 'General', 
+      questionTypes
+    );
 
     res.json({ 
       questions,
-      total_questions: shuffled.length,
-      list: { id: list._id.toString(), name: list.name, context: list.context }
+      total_questions: wordsResult.rows.length,
+      list: { id: list.id, name: list.name, context: list.context }
     });
   } catch (error) {
-    console.error('Error starting quiz:', error);
     res.status(500).json({ message: 'Error starting quiz' });
   }
 });
 
-router.post('/:listId/more', validate(listIdSchema), async (req, res) => {
+router.post('/:listId/more', validate(listIdSchema), async (req: Request, res: Response) => {
   try {
     const { listId } = req.params;
-    const [list, words] = await Promise.all([
-      WordList.findById(listId).lean(),
-      Word.find({ 'ownedByLists.listId': listId }).lean()
-    ]);
+    const tenantId = (req as any).tenantId;
 
-    if (!list) return res.status(404).json({ message: 'List not found' });
-    if (!words.length) return res.status(400).json({ message: 'List has no words' });
+    const listResult = await query('SELECT * FROM word_lists WHERE id = $1 AND tenant_id = $2', [listId, tenantId]);
+    if (listResult.rows.length === 0) return res.status(404).json({ message: 'List not found' });
+    const list = listResult.rows[0];
 
-    const transformed = transformWords(words, listId);
-    const selected = shuffleArray(transformed).slice(0, 5);
-    const questionTypes = await getQuestionTypes(req.headers['user-id'] as string);
-    const questions = await quizAgentService.generateQuestions(selected, list.context || 'General', questionTypes);
+    const wordsResult = await query(
+      `SELECT w.id, w.value, wc.meaning
+       FROM words w
+       JOIN word_contexts wc ON w.id = wc.word_id
+       WHERE wc.list_id = $1
+       ORDER BY RANDOM()
+       LIMIT 5`,
+      [listId]
+    );
+
+    if (wordsResult.rows.length === 0) return res.status(400).json({ message: 'List has no words' });
+
+    const questionTypes = await getQuestionTypes(tenantId);
+    const questions = await quizAgentService.generateQuestions(
+      wordsResult.rows, 
+      list.context || 'General', 
+      questionTypes
+    );
 
     res.json({ questions });
   } catch (error) {
-    console.error('Error getting more questions:', error);
     res.status(500).json({ message: 'Error getting more questions' });
   }
 });
 
-router.put('/:listId/learned-points', validate(updatePointsSchema), async (req, res) => {
+router.put('/:listId/learned-points', validate(updatePointsSchema), async (req: Request, res: Response) => {
   try {
     const { listId } = req.params;
     const { results } = req.body;
-    
-    console.log('Updating learned points for list:', listId);
-    console.log('Results:', results);
-    
+    const tenantId = (req as any).tenantId;
+
+    // Verify list ownership
+    const listCheck = await query('SELECT id FROM word_lists WHERE id = $1 AND tenant_id = $2', [listId, tenantId]);
+    if (listCheck.rows.length === 0) return res.status(404).json({ message: 'List not found' });
+
     await Promise.all(results.map(async (result: { wordId: string, correct: boolean }) => {
-      console.log('Processing result:', result);
-      const word = await Word.findById(result.wordId);
-      if (!word) {
-        console.log('Word not found:', result.wordId);
-        return;
-      }
+      const updateQuery = result.correct 
+        ? 'UPDATE word_contexts SET learned_point = LEAST(100, learned_point + 10), updated_at = CURRENT_TIMESTAMP WHERE word_id = $1 AND list_id = $2'
+        : 'UPDATE word_contexts SET learned_point = GREATEST(0, learned_point - 5), updated_at = CURRENT_TIMESTAMP WHERE word_id = $1 AND list_id = $2';
       
-      const context = word.ownedByLists.find(ctx => ctx.listId.toString() === listId);
-      if (!context) {
-        console.log('Context not found for word:', result.wordId, 'in list:', listId);
-        return;
-      }
-      
-      const current = context.learnedPoint || 0;
-      const newPoints = result.correct 
-        ? Math.min(100, current + 10) 
-        : Math.max(0, current - 5);
-      
-      console.log(`Word ${word.value}: ${current} → ${newPoints} (${result.correct ? 'correct' : 'incorrect'})`);
-      context.learnedPoint = newPoints;
-      
-      await word.save();
+      await query(updateQuery, [result.wordId, listId]);
     }));
     
     res.json({ message: 'Learned points updated successfully' });
   } catch (error) {
-    console.error('Error updating learned points:', error);
     res.status(500).json({ message: 'Error updating learned points' });
   }
 });
 
-export default router; 
+export default router;
