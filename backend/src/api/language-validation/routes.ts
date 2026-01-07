@@ -1,13 +1,14 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { run } from '@openai/agents';
 import { languageValidationAgent } from '../../agents';
 import { LanguageValidationResultType } from '../../agents/language-validation-agent/schemas';
 
 const router = Router();
 
-router.post('/validate', async (req, res) => {
+router.post('/validate', async (req: Request, res: Response) => {
   try {
     const { language } = req.body;
+    // const tenantId = (req as any).tenantId; // Not strictly needed for this pure AI logic, but available
 
     if (!language || typeof language !== 'string') {
       return res.status(400).json({ 
