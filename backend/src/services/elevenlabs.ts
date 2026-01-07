@@ -55,9 +55,9 @@ export class ElevenLabsService {
   private readonly VOICE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor() {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      throw new Error('ELEVENLABS_API_KEY environment variable is required');
+    const apiKey = process.env.ELEVENLABS_API_KEY || 'dummy-key';
+    if (!process.env.ELEVENLABS_API_KEY) {
+      console.warn('ELEVENLABS_API_KEY environment variable is missing. Audio features will be disabled.');
     }
 
     this.client = new ElevenLabsClient({

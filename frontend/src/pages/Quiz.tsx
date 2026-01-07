@@ -151,7 +151,7 @@ export const Quiz = () => {
         setSelectedAnswer('');
         setIsAnswered(false);
         setActualCorrectness(null);
-        return !response.completed;
+        return response.questions.length > 0;
       }
       return false;
     } catch (error: any) {

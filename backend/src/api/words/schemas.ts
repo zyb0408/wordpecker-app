@@ -1,15 +1,14 @@
 import { z } from 'zod';
-import mongoose from 'mongoose';
 
 export const listIdSchema = {
   params: z.object({
-    listId: z.string().refine(val => mongoose.Types.ObjectId.isValid(val), 'Invalid list ID')
+    listId: z.string().uuid('Invalid list ID')
   })
 };
 
 export const wordIdSchema = {
   params: z.object({
-    wordId: z.string().refine(val => mongoose.Types.ObjectId.isValid(val), 'Invalid word ID')
+    wordId: z.string().uuid('Invalid word ID')
   })
 };
 
@@ -23,8 +22,8 @@ export const addWordSchema = {
 
 export const deleteWordSchema = {
   params: z.object({
-    listId: z.string().refine(val => mongoose.Types.ObjectId.isValid(val), 'Invalid list ID'),
-    wordId: z.string().refine(val => mongoose.Types.ObjectId.isValid(val), 'Invalid word ID')
+    listId: z.string().uuid('Invalid list ID'),
+    wordId: z.string().uuid('Invalid word ID')
   })
 };
 

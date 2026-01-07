@@ -1,9 +1,8 @@
 import { z } from 'zod';
-import mongoose from 'mongoose';
 
 export const listParamsSchema = {
   params: z.object({
-    id: z.string().refine(val => mongoose.Types.ObjectId.isValid(val), 'Invalid ID')
+    id: z.string().uuid('Invalid ID')
   })
 };
 

@@ -24,8 +24,30 @@ import voiceRoutes from './api/voice/routes';
 const app = express();
 
 // Global middleware
-app.use(helmet());
-app.use(cors());
+app.use(helmet({
+  crossOriginResourcePolicy: false, // Allow cross-origin images/audio
+}));
+
+// Configure CORS for production
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  /\.vercel\.app$/, // Allow all Vercel deployments
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.some(allowed => 
+      typeof allowed === 'string' ? allowed === origin : allowed.test(origin)
+    )) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
+
 app.use(express.json());
 app.use(tenantHandler); // Multi-tenancy support
 

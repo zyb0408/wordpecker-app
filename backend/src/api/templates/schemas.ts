@@ -1,9 +1,8 @@
 import { z } from 'zod';
-import mongoose from 'mongoose';
 
 export const templateParamsSchema = {
   params: z.object({
-    id: z.string().refine(val => mongoose.Types.ObjectId.isValid(val), 'Invalid template ID')
+    id: z.string().uuid('Invalid template ID')
   })
 };
 

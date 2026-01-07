@@ -1,17 +1,18 @@
 import { z } from 'zod';
-import mongoose from 'mongoose';
 
 export const listIdSchema = {
   params: z.object({
-    listId: z.string().refine(val => mongoose.Types.ObjectId.isValid(val), 'Invalid list ID')
+    listId: z.string().uuid('Invalid list ID')
   })
 };
 
 export const updatePointsSchema = {
-  ...listIdSchema,
+  params: z.object({
+    listId: z.string().uuid('Invalid list ID')
+  }),
   body: z.object({
     results: z.array(z.object({
-      wordId: z.string().refine(val => mongoose.Types.ObjectId.isValid(val), 'Invalid word ID'),
+      wordId: z.string().uuid('Invalid word ID'),
       correct: z.boolean()
     }))
   })
