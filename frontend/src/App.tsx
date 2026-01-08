@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { ChakraProvider, Box } from '@chakra-ui/react';
 import theme from './theme';
 import { Lists } from './pages/Lists';
@@ -17,13 +17,22 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Header } from './components/Header';
 
-// Simple Auth Guard
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+// Protected Layout Component
+const ProtectedLayout = () => {
   const tenantId = localStorage.getItem('wordpecker-tenant-id');
+
   if (!tenantId) {
     return <Navigate to="/login" replace />;
   }
-  return <>{children}</>;
+
+  return (
+    <>
+      <Header />
+      <Box p={4}>
+        <Outlet />
+      </Box>
+    </>
+  );
 };
 
 function App() {
@@ -32,33 +41,29 @@ function App() {
       <Router>
         <Box bg="slate.900" minH="100vh" color="white">
           <Routes>
+            {/* Public Routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route
-              path="*"
-              element={
-                <ProtectedRoute>
-                  <>
-                    <Header />
-                    <Routes>
-                      <Route path="/" element={<Navigate to="/lists" replace />} />
-                      <Route path="/lists" element={<Lists />} />
-                      <Route path="/lists/:id" element={<ListDetail />} />
-                      <Route path="/learn/:id" element={<Learn />} />
-                      <Route path="/quiz/:id" element={<Quiz />} />
-                      <Route path="/templates" element={<TemplateLibrary />} />
-                      <Route path="/words/:wordId" element={<WordDetailPage />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="/describe" element={<ImageDescription />} />
-                      <Route path="/learn-new-words" element={<GetNewWords />} />
-                      <Route path="/learn-new-words/session" element={<WordLearningSession />} />
-                      <Route path="/reading/:listId" element={<ReadingPage />} />
-                      <Route path="/voice-chat/:listId" element={<VoiceChat />} />
-                    </Routes>
-                  </>
-                </ProtectedRoute>
-              }
-            />
+
+            {/* Protected Routes */}
+            <Route element={<ProtectedLayout />}>
+              <Route path="/" element={<Navigate to="/lists" replace />} />
+              <Route path="/lists" element={<Lists />} />
+              <Route path="/lists/:id" element={<ListDetail />} />
+              <Route path="/learn/:id" element={<Learn />} />
+              <Route path="/quiz/:id" element={<Quiz />} />
+              <Route path="/templates" element={<TemplateLibrary />} />
+              <Route path="/words/:wordId" element={<WordDetailPage />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/describe" element={<ImageDescription />} />
+              <Route path="/learn-new-words" element={<GetNewWords />} />
+              <Route path="/learn-new-words/session" element={<WordLearningSession />} />
+              <Route path="/reading/:listId" element={<ReadingPage />} />
+              <Route path="/voice-chat/:listId" element={<VoiceChat />} />
+            </Route>
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Box>
       </Router>
