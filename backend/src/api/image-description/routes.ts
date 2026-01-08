@@ -4,11 +4,13 @@ import { query } from '../../config/postgresql';
 import { imageDescriptionAgentService } from './agent-service';
 import { stockPhotoService } from './stock-photo-service';
 import { getUserLanguages } from '../../utils/getUserLanguages';
-import { 
-  startExerciseSchema, 
-  submitDescriptionSchema, 
-  addWordsSchema, 
-  historyQuerySchema 
+import { storageService } from '../../services/storage';
+import { downloadImage, extractFilenameFromUrl } from '../../utils/imageDownloader';
+import {
+  startExerciseSchema,
+  submitDescriptionSchema,
+  addWordsSchema,
+  historyQuerySchema
 } from './schemas';
 
 const router = Router();
@@ -19,13 +21,25 @@ router.post('/start', validate(startExerciseSchema), async (req: Request, res: R
     const tenantId = (req as any).tenantId;
 
     const exerciseContext = context || await imageDescriptionAgentService.generateContext();
-    const image = imageSource === 'ai' 
+    const image = imageSource === 'ai'
       ? await imageDescriptionAgentService.generateAIImage(exerciseContext, tenantId)
       : await stockPhotoService.findStockImage(exerciseContext, tenantId);
 
+    // Download and persist the image
+    let persistedImageUrl = image.url;
+    try {
+      const { buffer, contentType } = await downloadImage(image.url);
+      const filename = extractFilenameFromUrl(image.url);
+      persistedImageUrl = await storageService.uploadFile(buffer, filename, contentType);
+      console.log(`✅ Image persisted: ${persistedImageUrl}`);
+    } catch (error) {
+      console.error('Failed to persist image, using original URL:', error);
+      // 如果持久化失败，继续使用原始 URL
+    }
+
     res.json({
       context: exerciseContext,
-      image: { url: image.url, alt: image.alt_description, id: image.id },
+      image: { url: persistedImageUrl, alt: image.alt_description, id: image.id },
       instructions: "Look at this image carefully and describe what you see. Include details about objects, people, actions, emotions, colors, and atmosphere. Write in your target language and be as descriptive as you can!"
     });
   } catch (error) {
@@ -42,10 +56,10 @@ router.post('/submit', validate(submitDescriptionSchema), async (req: Request, r
     const { baseLanguage, targetLanguage } = await getUserLanguages(tenantId);
 
     const analysis = await imageDescriptionAgentService.analyzeDescription(
-      userDescription, 
-      imageUrl, 
-      context || 'General image description', 
-      baseLanguage, 
+      userDescription,
+      imageUrl,
+      context || 'General image description',
+      baseLanguage,
       targetLanguage
     );
 
@@ -96,7 +110,7 @@ router.post('/add-words', validate(addWordsSchema), async (req: Request, res: Re
     const addedWords = [];
     for (const { word, meaning } of selectedWords) {
       const val = word.toLowerCase().trim();
-      
+
       // Find or create word for this tenant
       let wordResult = await query('SELECT id FROM words WHERE value = $1 AND tenant_id = $2', [val, tenantId]);
       let wordId;
@@ -119,7 +133,7 @@ router.post('/add-words', validate(addWordsSchema), async (req: Request, res: Re
     }
 
     res.json({
-      message: createNewList 
+      message: createNewList
         ? `Created new list "${targetListName}" and added ${addedWords.length} words`
         : `Successfully added ${addedWords.length} words to your list`,
       addedWords,

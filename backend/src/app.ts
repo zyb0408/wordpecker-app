@@ -40,6 +40,14 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Serve static files for local storage
+if (environment.storageProvider === 'local') {
+  const uploadDir = environment.localStorage?.uploadDir || './uploads';
+  app.use('/uploads', express.static(uploadDir));
+  console.log(`📁 Serving static files from: ${uploadDir}`);
+}
+
 app.use(tenantHandler); // Multi-tenancy support
 
 // Apply rate limiter only to OpenAI-powered routes
@@ -71,10 +79,10 @@ app.use(errorHandler);
 // Only start server if not in test environment
 if (process.env.NODE_ENV !== 'test') {
   const PORT = environment.port;
-  
+
   // Configure OpenAI agents
   configureOpenAIAgents();
-  
+
   // Connect to PostgreSQL and start server
   connectDB().then(() => {
     app.listen(PORT, () => {
