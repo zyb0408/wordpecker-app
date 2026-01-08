@@ -16,6 +16,5 @@ export const environment = {
   openaiApiKey: process.env.OPENAI_API_KEY!,
   openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   databaseUrl: process.env.DATABASE_URL!,
-  jwtSecret: process.env.JWT_SECRET!,
-  mongodbUrl: process.env.MONGODB_URL
+  jwtSecret: process.env.JWT_SECRET!
 } as const;
