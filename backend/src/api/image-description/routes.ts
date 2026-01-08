@@ -30,8 +30,9 @@ router.post('/start', validate(startExerciseSchema), async (req: Request, res: R
     try {
       const { buffer, contentType } = await downloadImage(image.url);
       const filename = extractFilenameFromUrl(image.url);
-      persistedImageUrl = await storageService.uploadFile(buffer, filename, contentType);
-      console.log(`✅ Image persisted: ${persistedImageUrl}`);
+      // 传递 tenantId 以按用户组织文件
+      persistedImageUrl = await storageService.uploadFile(buffer, filename, contentType, tenantId);
+      console.log(`✅ Image persisted for tenant ${tenantId}: ${persistedImageUrl}`);
     } catch (error) {
       console.error('Failed to persist image, using original URL:', error);
       // 如果持久化失败，继续使用原始 URL

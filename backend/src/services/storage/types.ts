@@ -9,9 +9,10 @@ export interface StorageService {
      * @param buffer 文件内容
      * @param filename 文件名
      * @param contentType MIME 类型
+     * @param tenantId 可选的租户 ID，用于按用户组织文件
      * @returns 文件的公开访问 URL
      */
-    uploadFile(buffer: Buffer, filename: string, contentType: string): Promise<string>;
+    uploadFile(buffer: Buffer, filename: string, contentType: string, tenantId?: string): Promise<string>;
 
     /**
      * 删除文件

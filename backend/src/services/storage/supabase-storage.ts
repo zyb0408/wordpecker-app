@@ -21,11 +21,12 @@ export class SupabaseStorageService implements StorageService {
         this.client = createClient(config.url, config.serviceKey);
     }
 
-    async uploadFile(buffer: Buffer, filename: string, contentType: string): Promise<string> {
-        // 生成唯一的文件路径
+    async uploadFile(buffer: Buffer, filename: string, contentType: string, tenantId?: string): Promise<string> {
+        // 生成唯一的文件路径，按用户组织
         const timestamp = Date.now();
         const randomStr = Math.random().toString(36).substring(2, 8);
-        const filePath = `wordpecker/images/${timestamp}-${randomStr}-${filename}`;
+        const userPrefix = tenantId ? `${tenantId}/` : '';
+        const filePath = `wordpecker/images/${userPrefix}${timestamp}-${randomStr}-${filename}`;
 
         try {
             // 上传到 Supabase Storage

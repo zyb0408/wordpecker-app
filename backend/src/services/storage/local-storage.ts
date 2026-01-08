@@ -17,9 +17,13 @@ export class LocalStorageService implements StorageService {
         this.baseUrl = environment.localStorage?.baseUrl || `http://localhost:${environment.port}`;
     }
 
-    async uploadFile(buffer: Buffer, filename: string, contentType: string): Promise<string> {
+    async uploadFile(buffer: Buffer, filename: string, contentType: string, tenantId?: string): Promise<string> {
         // 确保上传目录存在
         await fs.mkdir(this.uploadDir, { recursive: true });
+
+        // 如果提供了 tenantId，按用户组织文件
+        const userDir = tenantId ? path.join(this.uploadDir, tenantId) : this.uploadDir;
+        await fs.mkdir(userDir, { recursive: true });
 
         // 生成唯一文件名（添加时间戳避免冲突）
         const timestamp = Date.now();
@@ -27,13 +31,14 @@ export class LocalStorageService implements StorageService {
         const basename = path.basename(filename, ext);
         const uniqueFilename = `${basename}-${timestamp}${ext}`;
 
-        const filePath = path.join(this.uploadDir, uniqueFilename);
+        const filePath = path.join(userDir, uniqueFilename);
 
         // 写入文件
         await fs.writeFile(filePath, buffer);
 
         // 返回公开访问 URL
-        return this.getPublicUrl(uniqueFilename);
+        const relativePath = tenantId ? `${tenantId}/${uniqueFilename}` : uniqueFilename;
+        return this.getPublicUrl(relativePath);
     }
 
     async deleteFile(fileUrl: string): Promise<void> {

@@ -31,11 +31,12 @@ export class OSSStorageService implements StorageService {
         });
     }
 
-    async uploadFile(buffer: Buffer, filename: string, contentType: string): Promise<string> {
-        // 生成唯一的对象键（路径）
+    async uploadFile(buffer: Buffer, filename: string, contentType: string, tenantId?: string): Promise<string> {
+        // 生成唯一的对象键（路径），按用户组织
         const timestamp = Date.now();
         const randomStr = Math.random().toString(36).substring(2, 8);
-        const objectKey = `wordpecker/images/${timestamp}-${randomStr}-${filename}`;
+        const userPrefix = tenantId ? `${tenantId}/` : '';
+        const objectKey = `wordpecker/images/${userPrefix}${timestamp}-${randomStr}-${filename}`;
 
         try {
             // 上传到 OSS
