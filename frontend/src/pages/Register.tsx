@@ -38,7 +38,8 @@ export const Register = () => {
       const response = await apiService.register(name, email, password);
       localStorage.setItem('wordpecker-auth-token', response.token);
       localStorage.setItem('wordpecker-tenant-id', response.user.id);
-      
+      localStorage.setItem('wordpecker-user-name', response.user.name);
+
       toast({
         title: 'Registration successful',
         description: 'Welcome to WordPecker!',

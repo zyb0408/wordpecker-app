@@ -6,11 +6,12 @@ import { ChevronDownIcon } from '@chakra-ui/icons';
 
 export const Header = () => {
   const navigate = useNavigate();
-  const tenantId = localStorage.getItem('wordpecker-tenant-id');
+  const userName = localStorage.getItem('wordpecker-user-name') || 'User';
 
   const handleLogout = () => {
     localStorage.removeItem('wordpecker-tenant-id');
     localStorage.removeItem('wordpecker-auth-token');
+    localStorage.removeItem('wordpecker-user-name');
     navigate('/login');
   };
 
@@ -20,7 +21,7 @@ export const Header = () => {
         <Flex h="16" alignItems="center" justifyContent="space-between">
           <Flex gap={6} align="center">
             <Link to="/lists">
-              <Button 
+              <Button
                 variant="ghost"
                 leftIcon={<Icon as={GiTreeBranch} color="green.500" />}
                 _hover={{
@@ -31,9 +32,9 @@ export const Header = () => {
               >
                 <Flex align="center" gap={1}>
                   <Text>My Trees</Text>
-                  <Icon 
-                    as={FaFeatherAlt} 
-                    color="#FA8C16" 
+                  <Icon
+                    as={FaFeatherAlt}
+                    color="#FA8C16"
                     transform="rotate(-45deg)"
                     boxSize={3}
                     ml={-1}
@@ -43,7 +44,7 @@ export const Header = () => {
               </Button>
             </Link>
             <Link to="/templates">
-              <Button 
+              <Button
                 variant="ghost"
                 leftIcon={<Icon as={GiBookshelf} color="#1890FF" />}
                 _hover={{
@@ -56,7 +57,7 @@ export const Header = () => {
               </Button>
             </Link>
             <Link to="/describe">
-              <Button 
+              <Button
                 variant="ghost"
                 leftIcon={<Icon as={FaCamera} color="#FA8C16" />}
                 _hover={{
@@ -69,7 +70,7 @@ export const Header = () => {
               </Button>
             </Link>
             <Link to="/learn-new-words">
-              <Button 
+              <Button
                 variant="ghost"
                 leftIcon={<Icon as={FaGraduationCap} color="#FA8C16" />}
                 _hover={{
@@ -82,7 +83,7 @@ export const Header = () => {
               </Button>
             </Link>
             <Link to="/settings">
-              <Button 
+              <Button
                 variant="ghost"
                 leftIcon={<Icon as={FaCog} color="gray.400" />}
                 _hover={{
@@ -95,25 +96,25 @@ export const Header = () => {
               </Button>
             </Link>
           </Flex>
-          
+
           <Flex align="center" gap={4}>
             <Menu>
-              <MenuButton 
-                as={Button} 
-                variant="ghost" 
+              <MenuButton
+                as={Button}
+                variant="ghost"
                 rightIcon={<ChevronDownIcon />}
                 _hover={{ bg: 'slate.700' }}
               >
                 <Flex align="center" gap={2}>
-                  <Avatar size="xs" name={tenantId || 'User'} bg="purple.500" />
+                  <Avatar size="xs" name={userName} bg="purple.500" />
                   <Text fontSize="sm" color="gray.300" maxW="100px" isTruncated>
-                    {tenantId || 'User'}
+                    {userName}
                   </Text>
                 </Flex>
               </MenuButton>
               <MenuList bg="slate.800" borderColor="slate.700">
-                <MenuItem 
-                  icon={<FaSignOutAlt />} 
+                <MenuItem
+                  icon={<FaSignOutAlt />}
                   onClick={handleLogout}
                   _hover={{ bg: 'red.900', color: 'white' }}
                   bg="transparent"

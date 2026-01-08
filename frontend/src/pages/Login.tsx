@@ -37,7 +37,8 @@ export const Login = () => {
       const response = await apiService.login(email, password);
       localStorage.setItem('wordpecker-auth-token', response.token);
       localStorage.setItem('wordpecker-tenant-id', response.user.id);
-      
+      localStorage.setItem('wordpecker-user-name', response.user.name);
+
       toast({
         title: 'Login successful',
         status: 'success',
@@ -138,10 +139,10 @@ export const Login = () => {
                   Register here
                 </ChakraLink>
               </Text>
-              <Button 
-                variant="link" 
-                color="gray.500" 
-                fontSize="xs" 
+              <Button
+                variant="link"
+                color="gray.500"
+                fontSize="xs"
                 onClick={useDemo}
               >
                 Click to use demo account
