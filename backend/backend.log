@@ -25,8 +25,3 @@ Emitted 'error' event on ReadStream instance at:
 
 Node.js v22.13.0
  ELIFECYCLE  Command failed with exit code 1.
-ELEVENLABS_API_KEY environment variable is missing. Audio features will be disabled.
-(node:27679) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-✅ Connected to PostgreSQL successfully
-Server running on port 3000 in development mode

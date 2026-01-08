@@ -1,10 +1,12 @@
 -- WordPecker v3.0 PostgreSQL Migration Script
 -- Supports Multi-tenancy via tenant_id field
 
--- 1. Create Tenants Table
+-- 1. Create Tenants Table (Acts as Users table)
 CREATE TABLE IF NOT EXISTS tenants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE,
+    password_hash VARCHAR(255),
     domain VARCHAR(255) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -90,9 +92,10 @@ CREATE INDEX idx_words_tenant ON words(tenant_id);
 CREATE INDEX idx_sessions_tenant ON sessions(tenant_id);
 
 -- Sample Data for Testing
-INSERT INTO tenants (id, name, domain) VALUES 
-('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Default Tenant', 'default.wordpecker.com'),
-('b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'Education Org', 'edu.wordpecker.com');
+-- Password for demo@example.com is 'password123' (hashed)
+INSERT INTO tenants (id, name, email, password_hash, domain) VALUES 
+('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Default User', 'demo@example.com', '$2b$10$L6vYpG.vX7.zG7.zG7.zG7.zG7.zG7.zG7.zG7.zG7.zG7.zG7.zG', 'default.wordpecker.com'),
+('b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'Education Org', 'edu@example.com', '$2b$10$L6vYpG.vX7.zG7.zG7.zG7.zG7.zG7.zG7.zG7.zG7.zG7.zG7.zG', 'edu.wordpecker.com');
 
 INSERT INTO templates (id, name, description, category, difficulty, featured) VALUES
 ('c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', 'Basic English', 'Common English words for beginners', 'General', 'beginner', true);

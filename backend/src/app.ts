@@ -20,6 +20,7 @@ import vocabularyRoutes from './api/vocabulary/routes';
 import languageValidationRoutes from './api/language-validation/routes';
 import audioRoutes from './api/audio/routes';
 import voiceRoutes from './api/voice/routes';
+import authRoutes from './api/auth/routes';
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use('/api/vocabulary', vocabularyRoutes);
 app.use('/api/language-validation', languageValidationRoutes);
 app.use('/api/audio', audioRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/auth', authRoutes);
 
 // Error handling
 app.use(errorHandler);
