@@ -1,5 +1,8 @@
 FROM node:18-alpine
 
+# Install pnpm
+RUN npm install -g pnpm
+
 # Install curl for health checks
 RUN apk add --no-cache curl
 
@@ -7,16 +10,16 @@ RUN apk add --no-cache curl
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json pnpm-lock.yaml ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN pnpm install --prod --frozen-lockfile
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN pnpm run build
 
 # Expose port
 EXPOSE 3000
@@ -26,4 +29,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/api/lists || exit 1
 
 # Start the application
-CMD ["npm", "start"]
+CMD ["pnpm", "start"]
