@@ -87,6 +87,12 @@ interface QuizQuestionsResponse {
 
 // API service for WordPecker app
 export const apiService = {
+  // Auth
+  login: (email: string, password: string): ApiResponse<{token: string, user: any}> => 
+    api.post('/api/auth/login', { email, password }),
+  register: (name: string, email: string, password: string): ApiResponse<{token: string, user: any}> => 
+    api.post('/api/auth/register', { name, email, password }),
+
   // Lists
   getLists: (): ApiResponse<WordList[]> => api.get('/api/lists'),
   getList: (id: string): ApiResponse<WordList> => api.get(`/api/lists/${id}`),

@@ -22,7 +22,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { ViewIcon, ViewOffIcon } from '@chakra-ui/icons';
 import { apiService } from '../services/api';
 
-export const Login = () => {
+export const Register = () => {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,16 +31,17 @@ export const Login = () => {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const response = await apiService.login(email, password);
+      const response = await apiService.register(name, email, password);
       localStorage.setItem('wordpecker-auth-token', response.token);
       localStorage.setItem('wordpecker-tenant-id', response.user.id);
       
       toast({
-        title: 'Login successful',
+        title: 'Registration successful',
+        description: 'Welcome to WordPecker!',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -47,8 +49,8 @@ export const Login = () => {
       navigate('/lists');
     } catch (error: any) {
       toast({
-        title: 'Login failed',
-        description: error.response?.data?.error || 'Invalid email or password',
+        title: 'Registration failed',
+        description: error.response?.data?.error || 'Something went wrong',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -58,23 +60,31 @@ export const Login = () => {
     }
   };
 
-  const useDemo = () => {
-    setEmail('demo@example.com');
-    setPassword('password123');
-  };
-
   return (
     <Container maxW="md" py={20}>
       <VStack spacing={8} align="stretch">
         <VStack spacing={2} align="center">
-          <Heading color="green.500" size="xl">WordPecker</Heading>
-          <Text color="gray.400">Welcome back! Please login to your account.</Text>
+          <Heading color="green.500" size="xl">Join WordPecker</Heading>
+          <Text color="gray.400">Create your account and start learning today.</Text>
         </VStack>
 
         <Card bg="slate.800" borderColor="slate.700" borderWidth={1} boxShadow="xl">
           <CardBody p={8}>
-            <form onSubmit={handleLogin}>
+            <form onSubmit={handleRegister}>
               <VStack spacing={6}>
+                <FormControl id="name" isRequired>
+                  <FormLabel color="gray.300">Full Name</FormLabel>
+                  <Input
+                    placeholder="Enter your name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    bg="slate.900"
+                    borderColor="slate.600"
+                    _hover={{ borderColor: 'green.500' }}
+                    _focus={{ borderColor: 'green.500', boxShadow: '0 0 0 1px green.500' }}
+                  />
+                </FormControl>
+
                 <FormControl id="email" isRequired>
                   <FormLabel color="gray.300">Email Address</FormLabel>
                   <Input
@@ -94,7 +104,7 @@ export const Login = () => {
                   <InputGroup>
                     <Input
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
+                      placeholder="Create a password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       bg="slate.900"
@@ -124,7 +134,7 @@ export const Login = () => {
                   isLoading={isLoading}
                   _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
                 >
-                  Login
+                  Register
                 </Button>
               </VStack>
             </form>
@@ -133,19 +143,11 @@ export const Login = () => {
 
             <VStack spacing={4}>
               <Text color="gray.400" fontSize="sm">
-                Don't have an account?{' '}
-                <ChakraLink as={Link} to="/register" color="green.400" fontWeight="bold">
-                  Register here
+                Already have an account?{' '}
+                <ChakraLink as={Link} to="/login" color="green.400" fontWeight="bold">
+                  Login here
                 </ChakraLink>
               </Text>
-              <Button 
-                variant="link" 
-                color="gray.500" 
-                fontSize="xs" 
-                onClick={useDemo}
-              >
-                Click to use demo account
-              </Button>
             </VStack>
           </CardBody>
         </Card>

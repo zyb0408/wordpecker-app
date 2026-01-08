@@ -14,6 +14,7 @@ import { WordLearningSession } from './pages/WordLearningSession';
 import { ReadingPage } from './pages/ReadingPage';
 import { VoiceChat } from './pages/VoiceChat';
 import { Login } from './pages/Login';
+import { Register } from './pages/Register';
 import { Header } from './components/Header';
 
 // Simple Auth Guard
@@ -32,6 +33,7 @@ function App() {
         <Box bg="slate.900" minH="100vh" color="white">
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
             <Route
               path="*"
               element={
