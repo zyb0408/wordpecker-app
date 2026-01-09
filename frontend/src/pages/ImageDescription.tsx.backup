@@ -322,27 +322,6 @@ export const ImageDescription: React.FC = () => {
             </Box>
           </Flex>
 
-          {/* Tabs for New Exercise and History */}
-          <Tabs colorScheme="green" variant="enclosed" size="lg">
-            <TabList>
-              <Tab _selected={{ color: 'green.500', borderColor: 'green.500', borderBottomColor: 'transparent' }}>
-                <HStack spacing={2}>
-                  <Text fontSize="xl">🌱</Text>
-                  <Text fontWeight="semibold">新练习</Text>
-                </HStack>
-              </Tab>
-              <Tab _selected={{ color: 'green.500', borderColor: 'green.500', borderBottomColor: 'transparent' }}>
-                <HStack spacing={2}>
-                  <Text fontSize="xl">📚</Text>
-                  <Text fontWeight="semibold">历史记录</Text>
-                </HStack>
-              </Tab>
-            </TabList>
-
-            <TabPanels>
-              <TabPanel px={0} py={6}>
-
-
           {/* Setup Phase */}
           {state === 'setup' && (
             <Card bg={cardBg} borderColor={borderColor} borderWidth="2px" borderRadius="xl" shadow="lg">
@@ -871,6 +850,7 @@ export const ImageDescription: React.FC = () => {
               </Card>
             </VStack>
           )}
+        </VStack>
 
         {/* Add Words Modal */}
         <Modal isOpen={isOpen} onClose={onClose} size="lg">
@@ -1032,16 +1012,6 @@ export const ImageDescription: React.FC = () => {
             </ModalFooter>
           </ModalContent>
         </Modal>
-
-              </TabPanel>
-
-              <TabPanel px={0} py={6}>
-                <ImageDescriptionHistory />
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
-
-        </VStack>
       </Container>
     </Box>
   );
