@@ -99,10 +99,10 @@ export class ElevenLabsService {
    */
   private async getNativeVoicesForLanguage(language: string): Promise<string[]> {
     const now = Date.now();
-    
+
     // Check if we have cached voices and cache is still valid
-    if (this.nativeVoiceCache.has(language) && 
-        (now - this.lastVoiceCacheUpdate) < this.VOICE_CACHE_TTL) {
+    if (this.nativeVoiceCache.has(language) &&
+      (now - this.lastVoiceCacheUpdate) < this.VOICE_CACHE_TTL) {
       return this.nativeVoiceCache.get(language) || [];
     }
 
@@ -113,14 +113,14 @@ export class ElevenLabsService {
         .filter(voice => {
           const voiceLanguage = voice.labels?.language?.toLowerCase();
           const targetLanguage = language.toLowerCase();
-          
+
           // Match exact language or language family
           return voiceLanguage === targetLanguage ||
-                 voiceLanguage === this.getLanguageFamily(targetLanguage) ||
-                 (targetLanguage === 'zh' && (voiceLanguage === 'chinese' || voiceLanguage === 'mandarin')) ||
-                 (targetLanguage === 'ar' && voiceLanguage === 'arabic') ||
-                 (targetLanguage === 'ja' && voiceLanguage === 'japanese') ||
-                 (targetLanguage === 'ko' && voiceLanguage === 'korean');
+            voiceLanguage === this.getLanguageFamily(targetLanguage) ||
+            (targetLanguage === 'zh' && (voiceLanguage === 'chinese' || voiceLanguage === 'mandarin')) ||
+            (targetLanguage === 'ar' && voiceLanguage === 'arabic') ||
+            (targetLanguage === 'ja' && voiceLanguage === 'japanese') ||
+            (targetLanguage === 'ko' && voiceLanguage === 'korean');
         })
         .map(voice => voice.voiceId)
         .slice(0, 5); // Limit to top 5 voices per language
@@ -128,7 +128,7 @@ export class ElevenLabsService {
       // Cache the results
       this.nativeVoiceCache.set(language, nativeVoices);
       this.lastVoiceCacheUpdate = now;
-      
+
       return nativeVoices;
     } catch (error) {
       console.warn(`Failed to fetch native voices for ${language}:`, error);
@@ -142,7 +142,7 @@ export class ElevenLabsService {
   private getLanguageFamily(language: string): string {
     const families: Record<string, string> = {
       'zh': 'chinese',
-      'ja': 'japanese', 
+      'ja': 'japanese',
       'ko': 'korean',
       'ar': 'arabic',
       'hi': 'hindi',
@@ -220,7 +220,7 @@ export class ElevenLabsService {
 
     const defaults = { speed: speed || 1.0, style: 0.0 };
     const langSettings = languageSettings[language];
-    
+
     if (!langSettings) return defaults;
 
     return {
@@ -230,14 +230,18 @@ export class ElevenLabsService {
   }
 
   /**
-   * Generate audio using ElevenLabs API
+   * Generate audio using ElevenLabs API and persist it to long-term storage
    */
   async generateAudio(request: AudioGenerationRequest): Promise<AudioGenerationResponse> {
-    const { text, voice: requestedVoice, userId } = request;
+    const { text, voice: requestedVoice, userId: tenantId } = request;
+
+    if (!tenantId) {
+      throw new Error('Tenant ID is required for audio generation and tracking');
+    }
 
     // Determine target language (from user preferences or explicit)
     const language = await this.determineTargetLanguage(request);
-    
+
     // Get language-specific settings
     const audioSettings = this.getLanguageLearningSettings(language, request.speed);
 
@@ -252,71 +256,70 @@ export class ElevenLabsService {
 
     // Select best voice for the language
     const voice = await this.getBestVoiceForLanguage(language, requestedVoice);
-    
-    // Generate cache key including language for better cache management
-    const cacheKey = this.generateCacheKey(text, voice, audioSettings.speed);
-    const filePath = this.getCachedFilePath(cacheKey);
 
-    // Check cache first
-    if (this.isAudioCached(cacheKey)) {
-      console.log(`Audio served from cache: ${cacheKey} (${language})`);
-      return {
-        audioUrl: `/api/audio/cache/${cacheKey}`,
-        cacheKey,
-        voice,
-      };
-    }
+    // Generate cache key for local quick access
+    const cacheKey = this.generateCacheKey(text, voice, audioSettings.speed);
+    const localFilePath = this.getCachedFilePath(cacheKey);
+
+    // Define storage path for persistence (User Isolated)
+    const fileName = `audio-${Date.now()}-${cacheKey.substring(0, 8)}.mp3`;
+    const storagePath = `audios/${tenantId}/${fileName}`;
 
     try {
-      console.log(`Generating ${language} audio: "${text.substring(0, 50)}..." with voice ${voice}`);
-      
-      // Generate audio using ElevenLabs with language-optimized settings
-      const audioResponse = await this.client.textToSpeech.convert(voice, {
-        text: text,
-        modelId: 'eleven_multilingual_v2', // Supports multiple languages with high quality
-        voiceSettings: {
-          stability: 0.5,
-          similarityBoost: 0.8,
-          style: audioSettings.style, // Language-specific style
-          useSpeakerBoost: true,
-        },
-      });
+      let audioBuffer: Buffer;
 
-      // Convert response to buffer and save to cache
-      const chunks: Uint8Array[] = [];
-      const reader = audioResponse.getReader();
-      
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
+      // 1. Check local cache first for performance
+      if (this.isAudioCached(cacheKey)) {
+        console.log(`Audio hit in cache: ${cacheKey}`);
+        audioBuffer = fs.readFileSync(localFilePath);
+      } else {
+        // 2. Not in cache, generate from ElevenLabs
+        console.log(`Generating ${language} audio: "${text.substring(0, 50)}..."`);
+
+        const audioResponse = await this.client.textToSpeech.convert(voice, {
+          text: text,
+          modelId: 'eleven_multilingual_v2',
+          voiceSettings: {
+            stability: 0.5,
+            similarityBoost: 0.8,
+            style: audioSettings.style,
+            useSpeakerBoost: true,
+          },
+        });
+
+        const chunks: Uint8Array[] = [];
+        const reader = audioResponse.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) chunks.push(value);
+        }
+        audioBuffer = Buffer.concat(chunks);
+
+        // Save to local cache for next time
+        fs.writeFileSync(localFilePath, audioBuffer);
       }
-      
-      const audioBuffer = Buffer.concat(chunks);
-      fs.writeFileSync(filePath, audioBuffer);
 
-      console.log(`Audio generated and cached: ${cacheKey} (${language}, ${audioSettings.speed}x speed)`);
+      // 3. Persist to storage service (OSS/Supabase/Local Persistent)
+      const storageService = require('./storage').storageService;
+      const persistentUrl = await storageService.uploadFile(audioBuffer, storagePath, 'audio/mpeg', tenantId);
+
+      // 4. Save to database history
+      const { query } = require('../config/postgresql');
+      await query(
+        `INSERT INTO audio_history (tenant_id, text, audio_url, voice_id, language_code, source_type)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tenantId, text, persistentUrl, voice, language, request.userId ? 'user_request' : 'system']
+      );
 
       return {
-        audioUrl: `/api/audio/cache/${cacheKey}`,
+        audioUrl: persistentUrl,
         cacheKey,
         voice,
       };
     } catch (error) {
-      console.error('ElevenLabs API error:', error);
-      
-      if (error instanceof Error) {
-        // Handle specific ElevenLabs errors
-        if (error.message.includes('quota')) {
-          throw new Error('Audio generation quota exceeded. Please try again later.');
-        }
-        if (error.message.includes('voice')) {
-          throw new Error('Selected voice is not available. Using default voice.');
-        }
-      }
-      
-      throw new Error('Failed to generate audio. Please try again.');
+      console.error('Audio processing error:', error);
+      throw new Error('Failed to process and save audio.');
     }
   }
 
@@ -326,7 +329,7 @@ export class ElevenLabsService {
   async getAvailableVoices(language?: string): Promise<VoiceConfig[]> {
     try {
       const voicesResponse = await this.client.voices.getAll();
-      
+
       return voicesResponse.voices
         .filter((voice) => {
           if (!language) return true;
@@ -351,7 +354,7 @@ export class ElevenLabsService {
    */
   getCachedAudio(cacheKey: string): Buffer | null {
     const filePath = this.getCachedFilePath(cacheKey);
-    
+
     if (!this.isAudioCached(cacheKey)) {
       return null;
     }
@@ -376,7 +379,7 @@ export class ElevenLabsService {
       for (const file of files) {
         const filePath = path.join(this.cacheDir, file);
         const stats = fs.statSync(filePath);
-        
+
         if (now - stats.mtime.getTime() > maxAge) {
           fs.unlinkSync(filePath);
           console.log(`Cleaned old cache file: ${file}`);

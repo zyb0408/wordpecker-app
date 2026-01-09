@@ -126,4 +126,27 @@ router.post('/sentence-pronunciation',
   }
 );
 
+router.get('/history', async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).tenantId;
+    const { limit = 20 } = req.query;
+    const { query } = require('../../config/postgresql');
+
+    const result = await query(
+      `SELECT id, text, audio_url as "audioUrl", voice_id as "voiceId", 
+              language_code as "languageCode", source_type as "sourceType", 
+              created_at as "createdAt"
+       FROM audio_history
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [tenantId, limit]
+    );
+
+    res.json({ success: true, count: result.rows.length, history: result.rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch audio history' });
+  }
+});
+
 export default router;
